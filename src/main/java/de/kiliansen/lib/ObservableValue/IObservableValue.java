@@ -1,4 +1,4 @@
-package de.lmu.roborally.client.lib.ObservableValue;
+package de.kiliansen.lib.ObservableValue;
 
 import java.util.function.Consumer;
 
