@@ -1,121 +1,172 @@
 # ObservableValue
 
-This directory contains a standalone implementation of the Observer pattern, tailored for UI development and other scenarios where you need to react to changes in data. It provides a set of classes to create observable values and collections.
+A modern, thread-safe Java library for implementing the Observer pattern on common data structures. Create reactive, event-driven applications with fine-grained control over multithreading.
 
-## Core Concepts
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-The primary goal of this implementation is to provide a simple, yet powerful way to create data models that can be observed for changes. When the value of an `ObservableValue` changes, all registered listeners are notified.
+## Overview
 
-This is particularly useful in GUI applications to automatically update the view when the underlying data model changes, without having to write boilerplate code for UI updates.
+ObservableValue provides a set of classes that allow other objects to observe changes to their contents. It is designed from the ground up for multithreaded environments, using thread-safe collections and providing developers with precise control over which thread the change listeners are executed on.
 
-## Files
+### Features
 
-### `IObservableValue<T>`
+*   **`ObservableValue<T>`**: Wraps a single object. Get notified when the value is replaced.
+*   **`ObservableList<T>`**: A list that fires events when elements are added, removed, or updated.
+*   **`ObservableMap<K, V>`**: A map that fires events when entries are put, removed, or the map is cleared.
+*   **Thread-Safe**: Uses `AtomicReference`, `CopyOnWriteArrayList`, and `ConcurrentHashMap` internally to ensure safe access across multiple threads.
+*   **Flexible Threading**: Choose to run your listeners on the same thread that triggered the change or on a dedicated background thread for each listener. This is perfect for offloading work or updating UIs safely.
+*   **Detailed Change Events**: Listeners receive a detailed change definition object containing the old and new values, the index or key of the change, and the type of change that occurred.
 
-This is the main interface for all observable values. It defines the core methods for setting and getting the value, and for managing listeners.
+## Installation
 
-- `set(T value)`: Sets a new value. Listeners are only notified if the new value is different from the old one.
-- `get()`: Returns the current value.
-- `onChange(Consumer<T> listener)`: Registers a listener that will be called when the value changes. It returns an `AutoCloseable` which can be used to unregister the listener.
+To use ObservableValue in your Maven project, add the following dependency to your `pom.xml`:
 
-### `BaseObservableValue<T>`
+```xml
+<dependency>
+    <groupId>de.kiliansen.lib.ObservableValue</groupId>
+    <artifactId>ObservableValue</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
 
-This is an abstract base class that provides the fundamental implementation of `IObservableValue`. It manages a list of listeners and handles the notification logic, including multi-threading. Listeners can be configured to run on a separate thread or on the same thread that triggered the change.
+## Usage
 
 ### `ObservableValue<T>`
 
-This is the standard, concrete implementation of an observable value. It extends `BaseObservableValue` and implements `IOVDiffable`, which allows listeners to receive both the old and the new value upon a change.
+Use `ObservableValue` to monitor changes to a single value, like a setting, a status, or a user's selection.
 
-### `ObservableList<E>`
+```java
+import de.kiliansen.lib.ObservableValue.value.ObservableValue;
 
-An observable list that wraps a standard `java.util.List`. It implements the `List<E>` interface, so it can be used as a drop-in replacement for a regular `List`. Any modification to the list (add, remove, etc.) will trigger a notification to the listeners.
+// Create an observable value with an initial string
+ObservableValue<String> currentStatus = new ObservableValue<>("Offline");
+
+// Add a listener to react to changes.
+// This listener will run on a separate thread.
+currentStatus.onChange((oldValue, newValue) -> {
+    System.out.println("Status changed from '" + oldValue + "' to '" + newValue + "' on thread: " + Thread.currentThread().getName());
+}, false);
+
+System.out.println("Setting status on thread: " + Thread.currentThread().getName());
+// Change the value, which will trigger the listener
+currentStatus.set("Online");
+
+// Output:
+// Setting status on thread: main
+// Status changed from 'Offline' to 'Online' on thread: ObservableValue-Thread-1
+```
+
+### `ObservableList<T>`
+
+Use `ObservableList` to monitor additions, removals, and updates to a list of items.
+
+```java
+import de.kiliansen.lib.ObservableValue.list.ObservableList;
+import de.kiliansen.lib.ObservableValue.list.ObservableListChangeDef;
+
+// Create an observable list
+ObservableList<String> userList = new ObservableList<>();
+
+// Add a listener to log all changes.
+// This listener will run on the same thread that modifies the list.
+userList.onChange(change -> {
+    switch (change.type()) {
+        case ADD:
+            System.out.println("User added: " + change.newValue() + " at index " + change.index());
+            break;
+        case REMOVE:
+            System.out.println("User removed: " + change.oldValue() + " from index " + change.index());
+            break;
+        case UPDATE:
+            System.out.println("User at index " + change.index() + " changed from " + change.oldValue() + " to " + change.newValue());
+            break;
+        case CLEAR:
+            System.out.println("User list cleared.");
+            break;
+    }
+}, true);
+
+// Add items to the list
+userList.add("Alice");
+userList.add("Bob");
+
+// Remove an item
+userList.remove("Alice");
+
+// Update an item
+userList.set(0, "Robert");
+
+// Output:
+// User added: Alice at index 0
+// User added: Bob at index 1
+// User removed: Alice from index 1
+// User at index 0 changed from Bob to Robert
+```
 
 ### `ObservableMap<K, V>`
 
-An observable map that wraps a standard `java.util.Map`. It implements the `Map<K, V>` interface and behaves similarly to `ObservableList`. Any change to the map will notify the listeners.
-
-## Usage Example
-
-Here is a simple example of how to use `ObservableValue`:
+Use `ObservableMap` to monitor changes to a key-value store.
 
 ```java
-// Create an observable value with an initial value
-ObservableValue<String> name = new ObservableValue<>("John");
+import de.kiliansen.lib.ObservableValue.map.ObservableMap;
 
-// Add a listener to observe changes
-AutoCloseable subscription = name.onChange(newName -> {
-    System.out.println("Name changed to: " + newName);
-});
-
-// Change the value, which will trigger the listener
-name.set("Jane"); // Output: Name changed to: Jane
-
-// The value is the same, the listener will not be triggered
-name.set("Jane"); // No output
-
-// Unregister the listener
-try {
-    subscription.close();
-} catch (Exception e) {
-    e.printStackTrace();
-}
-
-// This change will not be observed
-name.set("John"); // No output
-```
-
-## `ObservableList` Usage
-
-`ObservableList` is useful when you need to observe changes to a list of items, for example, in a UI list view.
-
-```java
-// Create an observable list
-ObservableList<String> fruits = new ObservableList<>();
-
-// Add a listener
-fruits.onChange(list -> {
-    System.out.println("Fruits list changed: " + list);
-});
-
-// Modify the list
-fruits.add("Apple"); // Output: Fruits list changed: [Apple]
-fruits.add("Banana"); // Output: Fruits list changed: [Apple, Banana]
-fruits.remove("Apple"); // Output: Fruits list changed: [Banana]
-```
-
-## `ObservableMap` Usage
-
-`ObservableMap` is ideal for scenarios where you need to track a collection of key-value pairs.
-
-```java
 // Create an observable map
-ObservableMap<String, Integer> scores = new ObservableMap<>();
+ObservableMap<String, String> userPreferences = new ObservableMap<>();
 
-// Add a listener
-scores.onChange(map -> {
-    System.out.println("Scores changed: " + map);
-});
+// Add a listener for changes
+userPreferences.onChange(change -> {
+    switch (change.type()) {
+        case PUT:
+            System.out.println("Preference '" + change.key() + "' set to '" + change.newValue() + "'. Old value was '" + change.oldValue() + "'.");
+            break;
+        case REMOVE:
+            System.out.println("Preference '" + change.key() + "' removed. Last value was '" + change.oldValue() + "'.");
+            break;
+        case CLEAR:
+            System.out.println("All preferences cleared.");
+            break;
+    }
+}, true);
 
 // Modify the map
-scores.put("Alice", 10); // Output: Scores changed: {Alice=10}
-scores.put("Bob", 20); // Output: Scores changed: {Alice=10, Bob=20}
-scores.put("Alice", 15); // Output: Scores changed: {Alice=15, Bob=20}
+userPreferences.put("theme", "dark");
+userPreferences.put("language", "en");
+userPreferences.put("theme", "light"); // Update existing key
+userPreferences.remove("language");
+
+// Output:
+// Preference 'theme' set to 'dark'. Old value was 'null'.
+// Preference 'language' set to 'en'. Old value was 'null'.
+// Preference 'theme' set to 'light'. Old value was 'dark'.
+// Preference 'language' removed. Last value was 'en'.
 ```
 
-## Threading
+## Threading Model
 
-By default, listeners are notified on a separate thread from a dedicated thread pool. This is done to avoid blocking the thread that triggers the change, which is often the main UI thread.
+A key feature of this library is the ability to control listener execution threads via the `useSameThread` parameter in the `onChange` methods.
 
-You can, however, specify that a listener should be executed on the same thread that called the `set()` method by passing `true` as the second argument to `onChange()`:
+*   `useSameThread = true`: The listener is executed synchronously on the same thread that caused the value to change. This is useful for simple, fast operations where you need immediate consistency.
 
-```java
-myObservable.onChange(newValue -> {
-    // This will run on a background thread
-}, false); // false is the default
+*   `useSameThread = false`: The listener is executed asynchronously on a dedicated background thread. The library manages a thread pool to handle these listeners. This is ideal for long-running tasks, I/O operations, or UI updates in frameworks that require changes to be made on a specific thread (by using the listener to delegate back to a UI thread).
 
-myObservable.onChange(newValue -> {
-    // This will run on the same thread that called set()
-}, true);
-```
+## Building from Source
 
-This is important when the listener needs to perform UI updates, which in many frameworks must be done on the main UI thread. If the `set()` is called from the main thread, using `useSameThread = true` ensures the listener also runs on the main thread.
+To build the project from the source code, you need to have Java and Maven installed.
+
+1.  Clone the repository:
+    ```sh
+    git clone <repository-url>
+    ```
+2.  Navigate to the project directory:
+    ```sh
+    cd ObservableValue
+    ```
+3.  Build the project using Maven:
+    ```sh
+    mvn clean install
+    ```
+This will compile the source code, run tests, and install the artifact into your local Maven repository.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
